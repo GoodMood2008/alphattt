@@ -1,17 +1,19 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <title>注册</title>
-	<link rel="stylesheet" type="text/css" href="css/register.css"> 
+	<link  rel="shortcut icon" href="image/lecheng.png"/>
+	<link rel="stylesheet" type="text/css" href="css/login.css"> 
     <link rel="stylesheet" href="./bootstrap/css/bootstrap.min.css">
     <script src="jsolait/jsolait.js"></script>  
     <script src="jquery/jquery.min.js"></script>
     <script src="bootstrap/js/bootstrap.min.js"></script>
-    <script src="register.js"></script> 
+    <script src="./js/register.js"></script> 
 
 </head>
 <body>
+<<<<<<< HEAD
 <div class="bd reg-box">
     <div class="reg-con clearfix">
             <h2 class="reg-form-hd">注册帐号</h2>
@@ -48,11 +50,33 @@
         </form>
         <div class="reg-2-login fr">
             已有帐号，
+=======
+<div class="logo_box">
+	<h3>用户注册</h3>
+		<div class="input_outer">
+			<span class="u_user"></span>
+			<label class="l-login login_username" style="color: rgb(255, 255, 255);display: block;">输入用户</label>
+			<input id = "username" name="logname" class="text" onFocus="$('.login_username').hide()" onBlur="if(this.value=='') $('.login_username').show()" value="" style="color: #FFFFFF !important;position:absolute; z-index:100;" type="text">
+		</div>
+		<div class="input_outer">
+			<span class="us_uer"></span>
+			<label class="l-login login_password" style="color: rgb(255, 255, 255);display: block;">输入密码</label>
+			<input id = "pw" name="logpass" class="text" style="color: #FFFFFF !important; position:absolute; z-index:100;" onFocus="$('.login_password').hide()" onBlur="if(this.value=='') $('.login_password').show()" value="" type="password">
+		</div>
+		<div class="input_outer">
+			<span class="us_uer"></span>
+			<label class="l-login login_passwordagin" style="color: rgb(255, 255, 255);display: block;">再次输入密码</label>
+			<input id = "pw_agin" name="logpass" class="text" style="color: #FFFFFF !important; position:absolute; z-index:100;" onFocus="$('.login_passwordagin').hide()" onBlur="if(this.value=='') $('.login_passwordagin').show()" value="" type="password">
+		</div>
+		<div class="mb2"><a id="register_human" class="act-but submit" href="javascript:;" style="color: #FFFFFF">注册人类用户</a></div>
+		<div class="mb2"><a id="register_robot" class="act-but submit" href="javascript:;" style="color: #FFFFFF">注册机器人用</a></div>
+	<div class="sas">
+            已有帐号
+>>>>>>> fd51cfaba459d681749fd4c7b6384e3cf0c9d52a
             <a title="登录" href="login.html">
-                可直接登录
+                可直接登
                 <span>>></span>
             </a>
-        </div>
     </div>
 </body>
 </html>

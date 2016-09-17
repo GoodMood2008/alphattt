@@ -13,7 +13,11 @@ body {
 	width: 500px;
 }
 
-.char-room {
+#margin {
+	width: 50px;
+}
+
+.chat-room {
 	width: 800px;
 }
 
@@ -58,28 +62,16 @@ body {
     cursor: pointer;  
 } 
 
-#play, #stop {  
+#start_game, #start_robot, #start_witness, #start_hall {  
     width: 110px;  
 }  
 
 .chessboard {
     width: 100%;  
 	border:2px solid blue;
-    background: white;  	
+    background: white;  
 }
 
-.gamehall {
-    width: 100%;  
-	border:2px solid blue;
-    background: #66b3ff;  	
-}
-
-.gamehalltable  table {
-	border:0;
-	border-collapse:5;  
-	border-spacing:5;  
-    background: white;  	
-}
 .chessboardtd {
 	border:2px solid blue;
     background: white;  	
@@ -103,12 +95,4 @@ body {
     font-size: 40px;  	
 }  
 
-  
-td.tight1 {
- padding:25px;
-}
-  
-td.tight {
- padding:5px;
-}
   

@@ -1,6 +1,6 @@
 -module(mcts).
 -export([start/0, start/3]).
--export([get_move/1, update/2, display/3, stop/1]).
+-export([get_move/1, update/2, display/3, notify/2, stop/1]).
 
 -record(state,  {board = board,
 				 max_time = 2000,  % milliseconds
@@ -8,7 +8,8 @@
 				 plays_wins,  % ets, key = {player, game_state}
 				              %             value = {plays::integer(),
                               %			             wins:integer()}
-				 game_states = []
+				 game_states = [],
+				 player_client
 				 }).
 
 % APIs
@@ -28,6 +29,9 @@ display(Pid, GameState, Move) ->
 
 get_move(Pid) ->
 	call(Pid, get_move).
+
+notify(Pid, Info) ->
+	call(Pid, {notify, Info}).	
 	
 stop(Pid) ->
 	call(Pid, stop).	
@@ -45,7 +49,7 @@ init([Board, MaxTime, ExplorationFactor]) ->
 loop(State) ->
 	receive
 		{call, Ref, From, Msg} ->
-			case handle_call(Msg, State) of
+			case handle_call(Msg, State#state{player_client = From}) of
 				{reply, Reply, NewState} ->
 					From ! {Ref, Reply},
 					loop(NewState);
@@ -68,7 +72,11 @@ handle_call({display, GameState, Move}, State=#state{board=Board}) ->
 	io:format("player move ~p~n", [Move]),
 	io:format("~ts~n", [Board:display(GameState, Move)]),
 	{reply, ok, State};
-handle_call(get_move, State=#state{board=Board, game_states=GSs}) ->
+
+handle_call({notify, _Info}, State) ->
+	{reply, ok, State};
+	
+handle_call(get_move, State=#state{board=Board, game_states=GSs, player_client = PlayerClient}) ->
 	GS = hd(GSs),
 	{Player, LegalStates} = player_legal_states(Board, GS),
 	NextMove = 
@@ -80,21 +88,27 @@ handle_call(get_move, State=#state{board=Board, game_states=GSs}) ->
 			_ ->
 				{Games, MaxDepth, Time}
 					= run_simulation(Player, LegalStates, State),
-				io:format("[~p]Games: ~p Time: ~pms~n", [?MODULE, Games, Time]),
-				io:format("Maximum depth searched: ~p~n", [MaxDepth]),
+				CurrentPlayerID = Board:current_player(GS),
+				notify_room(PlayerClient, CurrentPlayerID, io_lib:format("[~p]Games: ~p Time: ~pms~n", [?MODULE, Games, Time])),
+				notify_room(PlayerClient, CurrentPlayerID, io_lib:format("Maximum depth searched: ~p~n", [MaxDepth])),
 
 				%% stats = [{move, percent, wins, plays}]
 				Stats = make_stats(Player, LegalStates,
 									State#state.plays_wins),
 				SortedStats = lists:reverse(lists:keysort(2, Stats)),
-				[io:format("~p: ~.2f% (~p / ~p)~n", [Move, Percent, Wins, Plays])
+				[notify_room(PlayerClient, CurrentPlayerID, io_lib:format("~p: ~.2f% (~p / ~p)~n", [Move, Percent, Wins, Plays]))
 					|| {Move, Percent, Wins, Plays} <- SortedStats],
 				[{Move, _, _, _} | _] = SortedStats,
 				Move
 		end,
+	PlayerClient ! {play, NextMove},
 	{reply, {ok, NextMove}, State};
 handle_call(stop, _State) ->
 	stop.	
+
+notify_room(PlayerClient, PlayerID, Info) ->
+%	io:format("notify room:~p~n", [lists:flatten(Info)]),
+	PlayerClient ! {notify, PlayerID, lists:flatten(Info)}.		
 
 player_legal_states(Board, CurGameState) ->
 	Player = Board:current_player(CurGameState),

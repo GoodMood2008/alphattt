@@ -1,192 +1,94 @@
 <erl module=alphattt_mod>
+-include("session.hrl").
 -compile(export_all).
--record(session,  { is_login = false,
-					username = none,
-					client_pid = none,
-					is_playing = false,
-				    pid = none}).
+
 out(A) ->
-    A2=A#arg{state = []},
     yaws_rpc:handler_session(A, {?MODULE, handle}).
 
-get_client_pid(Session, UserName) -> 
-	io:format("get client pid from session ~p ~n", [Session]),
-	case undefined =:= Session of
-		true -> init_client_pid(UserName);
-		false ->
-			#session{client_pid=ClientPid} = Session,
-			case is_pid(ClientPid) of
-				true -> ClientPid;
-				false -> init_client_pid(UserName)
-			end
-	end.
+handle(_State, {call, get_move, _Arg}, #session{pid_str = PidStr}) ->
+    Pid = web_agent_mgr:get_agent_pid(PidStr),
+	Response = web_agent:get_move(Pid), 
+    {true, 0, #session{pid_str = pid_to_list(Pid)}, {response, Response}};
+
+handle(_State, {call, poll_get_move, _Arg}, #session{pid_str = PidStr}) ->
+    Pid = web_agent_mgr:get_agent_pid(PidStr),
+
+    IsMove = web_agent:is_move(Pid),   
+    {PlayerID, LegalMoves} = web_agent:get_legal_moves(Pid),
+    LegalMovesArrayJson = [ json2:obj_from_list([{"R", R}, {"C", C}, {"r", R1}, {"c", 
+              C1}])          || {R, C, R1, C1} <- LegalMoves ],
+
+    Response = json2:obj_from_list([{"is_get_move", IsMove},
+                                    {"player", PlayerID},
+                                    {"legal_moves", {array, LegalMovesArrayJson}}]),
+    {true, 0, #session{pid_str = pid_to_list(Pid)}, {response, Response}};
 
 
-init_client_pid(UserName) ->
-	{ok, NewPid} = player_client:start(UserName, webplayer, board, "127.0.0.1", 8011),
-	io:format("player client ~p is create~n", [NewPid]),
-	NewPid.		
+handle(_State, {call, poll_display, _Arg}, #session{pid_str = PidStr}) ->
+    Pid = web_agent_mgr:get_agent_pid(PidStr),
 
-make_json_true_report() ->
-	json2:obj_from_list([{"result", true}]).	
-make_json_fault_report(Reason) ->
-	json2:obj_from_list([{"result", false}, {"reason", atom_to_list(Reason)}]).	
-	
-%% login   response  true|{false, Reason}
-handle(State, {call, login, {array, [UserName, Password]}} = Request, Session) ->
-	Pid = get_client_pid(Session, UserName),
-	LoginState = player_client:login(Pid, Password),
-	{Is_login, Json} = 
-		case LoginState of
-			ok -> io:format("login ok~n"),{true, make_json_true_report()};	
-				
-			{error, Reason} -> {false, make_json_fault_report(Reason)}
-		end,
-	NewSession = 
-		case undefined =:= Session of
-			true -> 
-				#session{is_login = Is_login, username = UserName, client_pid = Pid};
-			false ->
-				Session#session{is_login = Is_login, username = UserName, client_pid = Pid}
-		end,
-	io:format("old session : ~p new session ~p ~n", [Session, NewSession]),
-	{true, 0, NewSession, {response, Json}};
+    IsUpdateDisplayMove = web_agent:is_display_move(Pid),
+    Moves = web_agent:get_display_move(Pid),      
+    MovesJson = case IsUpdateDisplayMove of
+                    true ->
+                        [ begin
+                            MoveJson = json2:obj_from_list([{"R", R}, {"C", C}, {"r", R1}, {"c", C1}]), 
+                            json2:obj_from_list([{"player", Player},
+                                                 {"move", MoveJson}])
+                          end || {Player, {R, C, R1, C1}} <- Moves];
+                    _ -> []
+                 end,  
+    Infos = web_agent:get_info(Pid),
+    InfosJson = [json2:obj_from_list([{"player", Player},
+                                      {"info", Info}])
+                 || {Player, Info} <- Infos],  
+    Response = json2:obj_from_list([{"is_update_display", IsUpdateDisplayMove},
+                                    {"moves", {array, MovesJson}},
+				    {"infos", {array, InfosJson}}]),
+    {true, 0, #session{pid_str = pid_to_list(Pid)}, {response, Response}};
 
-handle(State, {call, login, {array, [UserName, Password]}} = _Request, Session=#session{is_login = true}) ->
-	{true, 0, Session, {response, make_json_fault_report(aready_login)}};
+handle(_State, {call, get_legal_moves, _Arg}, #session{pid_str = PidStr}) ->
+    Pid = web_agent_mgr:get_agent_pid(PidStr),
+    Response = web_agent:get_legal_moves(Pid), 
+    {true, 0, #session{pid_str = pid_to_list(Pid)}, {response, Response}};
 
-%% register	login response  true|{false, Reason}				 
-handle(State, {call, register, {array, [UserName, Password, Type]}} = _Request, Session) ->
-	PlayerType = 
-		case "human" =:= Type of
-			true -> human;
-			false -> robot
-		end,
-	RegisterState = game_auth:register(UserName, Password, PlayerType),
-	Json = 
-		case RegisterState of
-			ok-> make_json_true_report();		
-			{error, Reason} -> make_json_fault_report(Reason)
-		end,
-	{true, 0, Session, {response, Json}};
-	
-%% is_login
-handle(State, {call, is_login, _Arg} = _Request, Session) ->
-	Is_Login = 
-		case undefined =:= Session of
-			true -> false;
-			false ->
-				#session{is_login=LoginState} = Session,
-				LoginState
-		end,
-	Json = 	json2:obj_from_list([{"is_login", Is_Login}]),
-    {true, 0, Session, {response, Json}};	
-
-%% get_username
-handle(State, {call, get_username, _Arg} = _Request, Session=#session{username=UserName}) ->
-	Name = 
-		case none =:= UserName of
-			true -> "none";
-			false -> UserName
-		end,
-	Json = 	json2:obj_from_list([{"username", Name}]),
-    {true, 0, Session, {response, Json}};	
-
-
-handle(State, {call, get_state, _Arg} = _Request, Session=#session{is_playing = false}) ->
-	Json = 	json2:obj_from_list([{"is_playing", false}]),
-    {true, 0, Session, {response, Json}};	
-
-handle(State, {call, get_state, _Arg} = _Request, Session=#session{is_playing = true, pid = Pid}) ->	
-    {IsUpdateMove, Move, LegalMovesJsonList} = case webplayer:is_move(Pid) of
-		    	{ok, true} ->
-
-		    		{ok, OpponentMove} = webplayer:get_opponent_move(Pid),
-		    		MoveJson = case OpponentMove of
-		    			none -> "";
-		    			{R, C, R1, C1} ->
-							io:format("Opponent Move ~p~n", [OpponentMove]),		
-		    				json2:obj_from_list([{"R", R}, {"C", C}, {"r", R1}, {"c", C1}])
-		    		end,
-					{ok, LegalMoves} = webplayer:get_legal_move(Pid),
-						LegalMovesJson = [ json2:obj_from_list([{"R", R}, {"C", C}, {"r", R1}, {"c", C1}]) || {R, C, R1, C1} <- LegalMoves ],
-		    		{true, MoveJson, LegalMovesJson};
-		    	_ -> 
-		    		{false, [], []}
-		   end,
-	StateJson = json2:obj_from_list([{"is_playing", true},
-									 {"is_update_move", IsUpdateMove},
-									 {"move", Move},
-									 {"legal_moves", {array, LegalMovesJsonList}}]), 
-    {true, 0, Session, {response, StateJson}};
-
-handle(State, {call, get_state, _Arg} = Request, _Session) ->
-	handle(State, Request, #session{is_playing = false});
-
-handle(State, {call, set_move, {array, [R, C, R1, C1]}} = _Request, Session=#session{pid = Pid}) ->	
+handle(_State, {call, set_move, {array, [R, C, R1, C1]}}, #session{pid_str = PidStr}) ->	
 	Move = {R, C, R1, C1},
-	io:format("Webplayer Move ~p~n", [Move]),
-	case Pid of
-        undefined -> ok;
-        Pid ->  
-    		webplayer:set_move(Pid, Move)    	
-    end,		
-    {true, 0, Session, {response,  "ok"}};
+    Pid = web_agent_mgr:get_agent_pid(PidStr),   
+	ok = web_agent:set_move(Pid, Move),	
+    Response = json2:obj_from_list([{"value", true},
+                                {"reason", ""}]),    
+    {true, 0, #session{pid_str = pid_to_list(Pid)}, {response, Response}};
 
-handle(State, {call, end_game, _Value}, _Session) ->
-    {true, 0, #session{is_playing = false}, {response,  "ok"}};
 
-handle(State, {call, start_game, _Value}, Session=#session{username=UserName}) ->
-	Pid = get_client_pid(Session, UserName),
-	player_client:enter_room(Pid),
-	WebPlayerPid = player_client:get_player(Pid),
-	{ok, OpponentPid} = player_client:start("mcts", mcts, board, "127.0.0.1", 8011),
-	player_client:enter_room(OpponentPid),
-    {true, 0, #session{is_playing = true, pid = WebPlayerPid}, {response,  "ok"}};
+handle(_State, {call, start_game, _}, #session{pid_str = PidStr}) ->
+    Pid = web_agent_mgr:get_agent_pid(PidStr),
+    web_agent:enter_room(Pid),
+    Response = json2:obj_from_list([{"value", true}]),
+    {true, 0, #session{pid_str = pid_to_list(Pid)}, {response, Response}};
 
-handle(State, {call, get_hallState, _Arg} = _Request, _Session) ->
-	StateJson = json2:obj_from_list([{"rooms", {array, 											
-						[json2:obj_from_list([{"roomId", 1},
-											 {"player1", 
-											    json2:obj_from_list([
-											        {"name", "Brett1"},
-											        {"win", 3}])},
-									         {"player2", 
-									   			 json2:obj_from_list([
-											        {"name", "Pan"},
-											        {"win", 2}])}]),
-						json2:obj_from_list([{"roomId", 2},
-											{"player1", 
-											    json2:obj_from_list([
-											        {"name", "Ketty1"},
-											        {"win", 5}])},
-											  {"player2", 
-											    json2:obj_from_list([
-											        {"name", "Kevin"},
-											        {"win", 2}])}])	,
-						json2:obj_from_list([{"roomId", 3},
-											{"player1", 
-											    json2:obj_from_list([
-											        {"name", "Android"},
-											        {"win", 5}])},
-											  {"player2", 
-											    json2:obj_from_list([
-											        {"name", "IOS"},
-											        {"win", 2}])}])	
-											        ]}}]), 
-    {true, 0, #session{}, {response, StateJson}};	
+handle(_State, {call, start_robot, _}, #session{pid_str = PidStr}) ->
+    Pid = web_agent_mgr:get_agent_pid(PidStr),
+	ok = web_agent:start_robot(Pid, "mcts", mcts),
+    Response = json2:obj_from_list([{"value", true}]),     
+    {true, 0, #session{pid_str = pid_to_list(Pid)}, {response, Response}};
 
-handle(State, {call, enter_room, _Value}, Session) ->
-	io:format("hello~n"),
-	{ok, Pid} = player_client:start("webplayer", webplayer, board, "127.0.0.1", 8011),
-	player_client:enter_room(Pid),
-	WebPlayerPid = player_client:get_player(Pid),
-	{ true, 0, #session{ pid = WebPlayerPid}, {response,  "ok"}}.	
-	
-add_player(Name, Password, Type, RoomID) ->
-	{ok, Pid} = player_client:start(Name, Type, board, "127.0.0.1", 8011),
-	ok = player_client:login(Pid, Password),
-	player_client:enter_room(Pid, RoomID),
-	Pid.
+handle(_State, {call, start_observe, _}, #session{pid_str = PidStr}) ->
+    Pid = web_agent_mgr:get_agent_pid(PidStr),
+    Moves = web_agent:start_observe(Pid),
+    MovesJson = [ begin
+                            MoveJson = json2:obj_from_list([{"R", R}, {"C", C}, {"r", R1}, {"c", C1}]), 
+                            json2:obj_from_list([{"player", Player},
+                                                 {"move", MoveJson}])
+                          end || {Player, {R, C, R1, C1}} <- Moves],    
+    Response = json2:obj_from_list([{"is_update_display", true},
+                                    {"moves", {array, MovesJson}}]),
+    {true, 0, #session{pid_str = pid_to_list(Pid)}, {response, Response}};
+
+handle(_State, {call, Func, _Args}, Session = #session{pid_str = PidStr}) ->
+    io:format("alphattt unknown func call ~p, web_agent ~p~n", [Func, PidStr]),
+    Response = json2:obj_from_list([{"value", true},
+                                {"reason", ""}]),     
+    {true, 0, Session, {response, Response}}.  
 	
 </erl>
